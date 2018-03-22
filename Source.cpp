@@ -4,48 +4,34 @@ void setSections(std::vector<std::vector<std::string>>&, const std::vector<std::
 
 int main() {
 
-	std::vector<std::string> directories;
+	std::queue<std::string> dirs;
 
-	std::transform( // add sub directories to list
-		fs::directory_iterator("pa1-data"),
-		fs::directory_iterator(),
-		std::back_inserter(directories),
-		[](const auto& entry) {
-		return fs::path(entry).string(); }
-	);
-
-	std::vector<std::vector<std::string>> sections; 
-	int maxThreads = std::thread::hardware_concurrency();
-	setSections(sections, directories, maxThreads, 0); // split directories into sections
-													   // section size depends on num cores
-
-	short directoriesLeft = directories.size();
-	short j = 0;
-
-	while (directoriesLeft) {
-
-		short numThreads = (directoriesLeft >= maxThreads) ? maxThreads : directoriesLeft;
-		directoriesLeft -= numThreads;
-
-		std::vector<BlockIndexer> indexers(numThreads - 1);
-
-		std::vector<std::thread> threads;
-		for (int i = 0; i < numThreads - 1; i++) { // index files in directories on separate threads
-			threads.push_back(
-				std::move(
-				std::thread(
-				&BlockIndexer::index,
-				std::ref(indexers[i]),
-				std::ref(directories[j++])
-				)));
-		}
-
-		BlockIndexer indexer; // index 1 directory in main thread
-		indexer.index(directories[j++]);
-
-		for (auto& thread : threads) { thread.join(); }
+	for (const auto& dir : fs::directory_iterator("pa1-data")) {
+		std::string path = fs::path(dir).string();
+		dirs.push(path);
 	}
 
+	int maxThreads = std::thread::hardware_concurrency();
+
+	std::vector<BlockIndexer> indexers(maxThreads - 1);
+
+	std::vector<std::thread> threads;
+	for (int i = 0; i < maxThreads - 1; i++) { // index files in directories on separate threads
+		threads.push_back(
+			std::move(
+				std::thread(
+					&BlockIndexer::index,
+					std::ref(indexers[i]),
+					std::ref(dirs)
+				)));
+	}
+
+	BlockIndexer indexer; // index 1 directory in main thread
+	indexer.index(dirs);
+
+	for (auto& thread : threads) { thread.join(); }
+	std::cout << indexer.linkID;
+	
 	BlockIndexer::mergeIndexes();
 }
 

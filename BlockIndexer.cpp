@@ -1,9 +1,6 @@
 #include "BlockIndexer.h"
 
-
-std::mutex termMu, linkMu, queueMu;
-
-namespace fs = std::experimental::filesystem::v1;
+std::mutex termMu, linkMu, queueMu, queueMu2;
 
 unsigned long BlockIndexer::termID = 0, BlockIndexer::linkID = 0;
 
@@ -15,53 +12,65 @@ std::queue<std::string> BlockIndexer::blockQueue = {};
 
 BlockIndexer::BlockIndexer() {}
 
-BlockIndexer::BlockIndexer(const BlockIndexer& indexer) : blockIndex(indexer.blockIndex) {}
+BlockIndexer::BlockIndexer(const BlockIndexer& indexer)  {}
 
-void BlockIndexer::index(const std::string& inputDir) { 
+void BlockIndexer::index(std::queue<std::string>& dirQueue) { 
 
-	for (const auto& filePath : fs::directory_iterator(inputDir)) {
-		
-		std::string link = fs::path(filePath).filename().string();
-
-		unsigned long currLinkID;
+	std::string dir;
+	while (!dirQueue.empty()) {
 		{
-			std::lock_guard<std::mutex> locker(linkMu);
-			auto good = docDict.emplace(link, linkID);
-			linkID += good.second;
-			currLinkID = good.first->second;
+			std::lock_guard<std::mutex> locker(queueMu2);
+			dir = dirQueue.front();
+			dirQueue.pop();
 		}
 
-		std::ifstream inFile(filePath);
-		std::istream_iterator<std::string> start(inFile), end;
-		std::vector<std::string> words(start, end);
+		std::map<unsigned long, std::vector<unsigned long>> blockIndex;
 
-		for (const auto& word : words) {
+		for (const auto& filePath : fs::directory_iterator(dir)) {
 
-			unsigned long currTermId;
+			std::string link = fs::path(filePath).filename().string();
+
+			unsigned long currLinkID;
 			{
-				std::lock_guard<std::mutex> locker(termMu);
-				auto good = termDict.emplace(word, termID);
-				termID += good.second;
-				currTermId = good.first->second;
+				std::lock_guard<std::mutex> locker(linkMu);
+				auto good = docDict.emplace(link, linkID);
+				linkID += good.second;
+				currLinkID = good.first->second;
 			}
 
-			auto set = { currLinkID };
-			auto ok = blockIndex.emplace(currTermId, set);
+			std::ifstream inFile(filePath);
+			std::istream_iterator<std::string> start(inFile), end;
+			std::vector<std::string> words(start, end);
 
-			if (!ok.second) {
-				ok.first->second.push_back(currLinkID);
+			for (const auto& word : words) {
+
+				unsigned long currTermId;
+				{
+					std::lock_guard<std::mutex> locker(termMu);
+					auto good = termDict.emplace(word, termID);
+					termID += good.second;
+					currTermId = good.first->second;
+				}
+
+				auto set = { currLinkID };
+				auto ok = blockIndex.emplace(currTermId, set);
+
+				if (!ok.second) {
+					ok.first->second.push_back(currLinkID);
+				}
 			}
 		}
+
+		std::string outPath = outDir + fs::path(dir).filename().string();
+		storeBlockIndex(outPath, blockIndex);
+
+		std::lock_guard<std::mutex> locker(queueMu);
+		blockQueue.push(outPath);
+
 	}
-
-	std::string outPath = outDir + fs::path(inputDir).filename().string();
-	storeBlockIndex(outPath);
-
-	std::lock_guard<std::mutex> locker(queueMu);
-	blockQueue.push(outPath);
 }
 
-void BlockIndexer::storeBlockIndex(const std::string& path) {
+void BlockIndexer::storeBlockIndex(const std::string& path, std::map<unsigned long, std::vector<unsigned long>>& blockIndex) {
 
 	std::ofstream out(path, std::ofstream::binary);
 

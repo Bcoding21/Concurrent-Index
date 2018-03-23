@@ -1,7 +1,5 @@
 #include "BlockIndexer.h"
 
-void setSections(std::vector<std::vector<std::string>>&, const std::vector<std::string>&, int, int);
-
 int main() {
 
 	std::queue<std::string> dirs;
@@ -27,20 +25,4 @@ int main() {
 	BlockIndexer::mergeIndexes();
 
 	
-}
-
-void setSections(std::vector<std::vector<std::string>>& sections, const std::vector<std::string>& fileNames, int maxThreads, int i) {
-
-	if (i == log(maxThreads) / log(2)) {
-		sections.push_back(fileNames);
-		return;
-	}
-
-	int midOffset = fileNames.size() >> 1;
-
-	std::vector<std::string> leftHalf(fileNames.begin(), fileNames.begin() + midOffset);
-	setSections(sections, leftHalf, maxThreads, i + 1);
-
-	std::vector<std::string> rightHalf(fileNames.begin() + midOffset, fileNames.end());
-	setSections(sections, rightHalf, maxThreads, i + 1);
 }

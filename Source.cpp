@@ -30,9 +30,9 @@ int main() {
 	indexer.index(dirs);
 
 	for (auto& thread : threads) { thread.join(); }
-	std::cout << indexer.linkID;
 	
 	BlockIndexer::mergeIndexes();
+	std::cin.get();
 }
 
 void setSections(std::vector<std::vector<std::string>>& sections, const std::vector<std::string>& fileNames, int maxThreads, int i) {

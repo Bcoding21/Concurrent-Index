@@ -6,7 +6,9 @@ unsigned long BlockIndexer::termID = 0, BlockIndexer::linkID = 0;
 
 std::string BlockIndexer::outDir = "C:\\Users\\Brandon\\source\\repos\\Query\\Query\\";
 
-std::unordered_map<std::string, unsigned long> BlockIndexer::termDict = {}, BlockIndexer::docDict = {};
+std::unordered_map<std::string, unsigned long> BlockIndexer::docDict = {};
+
+std::map<std::string, unsigned long> BlockIndexer::termDict = {};
 
 std::queue<std::string> BlockIndexer::blockQueue = {};
 
@@ -38,25 +40,29 @@ void BlockIndexer::index(std::queue<std::string>& dirQueue) {
 				currLinkID = good.first->second;
 			}
 
-			std::ifstream inFile(filePath);
-			std::istream_iterator<std::string> start(inFile), end;
-			std::vector<std::string> words(start, end);
+			std::ifstream file(filePath);
+			std::string term;
 
-			for (const auto& word : words) {
+			while (file >> term) {
 
-				unsigned long currTermId;
-				{
-					std::lock_guard<std::mutex> locker(termMu);
-					auto good = termDict.emplace(word, termID);
-					termID += good.second;
-					currTermId = good.first->second;
+				unsigned long currTermID;
+				auto termSearch = termDict.find(term);
+
+				if (termSearch == termDict.end()) {
+					std::lock_guard<std::mutex> lock(termMu);
+					auto ok = termDict.emplace_hint(termDict.end(), term, termID);
+					currTermID = termID++;
+				}
+				else {
+					currTermID = termSearch->second;
 				}
 
-				auto set = { currLinkID };
-				auto ok = blockIndex.emplace(currTermId, set);
-
-				if (!ok.second) {
-					ok.first->second.push_back(currLinkID);
+				if (blockIndex.find(currTermID) == blockIndex.end()) {
+					auto list = { currLinkID };
+					blockIndex.emplace_hint(blockIndex.end(), currTermID, list);
+				}
+				else {
+					blockIndex.at(currTermID).push_back(currLinkID);
 				}
 			}
 		}
@@ -168,7 +174,7 @@ void BlockIndexer::merge(const std::string& file1, const std::string& file2, con
 
 			else if (pair1.first > pair2.first) {
 				put(pair2, f3);
-				pair1 = get(f2);
+				pair2 = get(f2);
 				++j;
 			}
 

@@ -8,7 +8,7 @@ std::string BlockIndexer::outDir = "C:\\Users\\Brandon\\source\\repos\\Query\\Qu
 
 std::unordered_map<std::string, unsigned long> BlockIndexer::docDict = {};
 
-std::map<std::string, unsigned long> BlockIndexer::termDict = {};
+std::deque<std::pair<std::string, unsigned long>> BlockIndexer::termDict = {};
 
 std::queue<std::string> BlockIndexer::blockQueue = {};
 
@@ -46,11 +46,14 @@ void BlockIndexer::index(std::queue<std::string>& dirQueue) {
 			while (file >> term) {
 
 				unsigned long currTermID;
-				auto termSearch = termDict.find(term);
+				auto termSearch = std::lower_bound(termDict.begin(), termDict.end(), term, 
+					[](const auto& pair, const auto& term) {
+					return pair.first == term;
+				});
 
 				if (termSearch == termDict.end()) {
 					std::lock_guard<std::mutex> lock(termMu);
-					auto ok = termDict.emplace_hint(termDict.end(), term, termID);
+					auto ok = termDict.emplace_back(term, termID);
 					currTermID = termID++;
 				}
 				else {

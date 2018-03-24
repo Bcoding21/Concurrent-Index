@@ -19,7 +19,7 @@ class BlockIndexer
 
 	static std::string outDir;
 	static std::unordered_map<std::string, unsigned long> docDict;
-	static std::map<std::string, unsigned long> termDict;
+	static std::deque<std::pair<std::string, unsigned long>> termDict;
 	static std::queue<std::string> blockQueue;
 
 	static std::pair<unsigned long, std::vector<unsigned long>> get(std::ifstream&);

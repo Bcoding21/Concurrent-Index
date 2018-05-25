@@ -15,36 +15,61 @@ std::mutex termMu, linkMu, queueMu, queueMu2;
 namespace fs = std::experimental::filesystem::v1;
 
 
-struct Index {
+struct Dictionary {
 	// maps terms to unque term id
-	std::unordered_map<std::string, int> termDict;
+	std::unordered_map<std::string, unsigned long> termDict;
 
 	// maps file to unique file id
-	std::unordered_map<std::string, int> fileDict;
+	std::unordered_map<std::string, unsigned long> fileDict;
 
 	// uniquely identifies each file
-	unsigned int fileCounter = 0;
+	unsigned long fileCounter = 0;
 
 	// uniquely identifies each term
-	unsigned int termCounter = 0;
+	unsigned long termCounter = 0;
 };
 
 
-void indexDirs(std::queue<std::string>&, Index&);
+void indexDirs(std::queue<std::string>&, Dictionary&, const std::string&);
 
-void storeTermIdIndex(const std::map<unsigned long, std::set<unsigned long>>&, const std::string&);
+void storeIndex(const std::map<unsigned long, std::set<unsigned long>>&, const std::string&);
+
+void storeDictionary(const std::unordered_map<std::string, unsigned long>& dict, const std::string& path);
 
 int main() {
 
+	std::string inDir = "C:\\Users\\Brandon\\Documents\\Projects\\C++\\MultiThreadedIndexer\\pa1-data\\pa1-data";
+
+	std::queue<std::string> dirQueue;
+
+	for (const auto& subDir : fs::directory_iterator(inDir)) {
+		std::string dirPath = subDir.path().filename().string();
+		dirQueue.push(dirPath);
+	}
 	
-	Index indexes;
-	
+	short numThreads = std::thread::hardware_concurrency();
+
+	std::vector<std::thread> threads;
+	threads.reserve(numThreads);
+
+	Dictionary index;
+
 	std::string outDir = "C:\\Users\\Brandon\\Documents\\Projects\\C++\\MultiThreadedIndexer\\";
+
+	for (int i = 0; i < numThreads; i++) {
+
+		threads.push_back(std::thread(&indexDirs, dirQueue, index, outDir));
+
+	}
+
+	for (auto& thread : threads) {
+		thread.join();
+	}
 
 }
 
 
-void indexDirs(std::queue<std::string>& dirQueue, Index& index, const std::string& outDir) {
+void indexDirs(std::queue<std::string>& dirQueue, Dictionary& index, const std::string& outDir) {
 
 	std::string dir;
 	while (!dirQueue.empty()) {
@@ -59,7 +84,6 @@ void indexDirs(std::queue<std::string>& dirQueue, Index& index, const std::strin
 		for (const auto& file : fs::directory_iterator(dir)) {
 
 			std::string fileName = fs::path(file).filename().string();
-
 			unsigned long fileId;
 
 			{
@@ -85,7 +109,6 @@ void indexDirs(std::queue<std::string>& dirQueue, Index& index, const std::strin
 				}
 
 				auto newFileIdList = { fileId };
-
 				auto iter = termIdIndex.emplace(termId, newFileIdList);
 				bool containsId = !iter.second;
 
@@ -93,22 +116,22 @@ void indexDirs(std::queue<std::string>& dirQueue, Index& index, const std::strin
 					iter.first->second.emplace(fileId);
 				}
 			}
-
 		}
 
 		std::string outPath = outDir + fs::path(dir).filename().string();
-		storeTermIdIndex(termIdIndex, outPath);
+		storeIndex(termIdIndex, outPath);
 
 		std::lock_guard<std::mutex> locker(queueMu);
 		dirQueue.push(outPath);
 	}
 }
 
-void storeTermIdIndex(const std::map<unsigned long, std::set<unsigned long>>& termIdIndex, const std::string& path ) {
+void storeIndex(const std::map<unsigned long, std::set<unsigned long>>& termIdIndex, const std::string& path ) {
 
 	std::ofstream stream(path, std::ios::binary);
 
 	if (stream.is_open()) {
+
 		int indexSize = termIdIndex.size();
 		stream.write(reinterpret_cast<char*>(&indexSize), sizeof(indexSize));
 
@@ -123,4 +146,10 @@ void storeTermIdIndex(const std::map<unsigned long, std::set<unsigned long>>& te
 			}
 		}
 	}
+}
+
+void storeDictionary(const std::unordered_map<std::string, unsigned long>& dict, const std::string& path) {
+
+	
+
 }

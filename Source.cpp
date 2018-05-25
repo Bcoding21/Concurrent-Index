@@ -30,7 +30,7 @@ struct Dictionary {
 };
 
 
-void indexDirs(std::queue<std::string>&, Dictionary&, const std::string&);
+void indexData(std::queue<fs::directory_entry>&, Dictionary&, const std::string&);
 
 void storeIndex(const std::map<unsigned long, std::set<unsigned long>>&, const std::string&);
 
@@ -40,11 +40,10 @@ int main() {
 
 	std::string inDir = "C:\\Users\\Brandon\\Documents\\Projects\\C++\\MultiThreadedIndexer\\pa1-data\\pa1-data";
 
-	std::queue<std::string> dirQueue;
+	std::queue<fs::directory_entry> dirEntryQueue;
 
 	for (const auto& subDir : fs::directory_iterator(inDir)) {
-		std::string dirPath = subDir.path().filename().string();
-		dirQueue.push(dirPath);
+		dirEntryQueue.push(subDir);
 	}
 	
 	short numThreads = std::thread::hardware_concurrency();
@@ -52,36 +51,42 @@ int main() {
 	std::vector<std::thread> threads;
 	threads.reserve(numThreads);
 
-	Dictionary index;
+	Dictionary dictionary;
 
 	std::string outDir = "C:\\Users\\Brandon\\Documents\\Projects\\C++\\MultiThreadedIndexer\\";
 
-	for (int i = 0; i < numThreads; i++) {
+	for (int i = 0; i < numThreads - 1; i++) {
 
-		threads.push_back(std::thread(&indexDirs, dirQueue, index, outDir));
+		threads.push_back(std::thread(&indexData, std::ref(dirEntryQueue), std::ref(dictionary), std::ref(outDir)));
 
 	}
 
+	indexData(dirEntryQueue, dictionary, outDir);
+
+	
 	for (auto& thread : threads) {
 		thread.join();
 	}
 
+
 }
 
 
-void indexDirs(std::queue<std::string>& dirQueue, Dictionary& index, const std::string& outDir) {
+void indexData(std::queue<fs::directory_entry>& dirQueue, Dictionary& index, const std::string& outDir) {
 
-	std::string dir;
+	fs::directory_entry entry;
+
 	while (!dirQueue.empty()) {
+
 		{
 			std::lock_guard<std::mutex> locker(queueMu2);
-			dir = dirQueue.front();
+			entry = dirQueue.front();
 			dirQueue.pop();
 		}
 
 		std::map<unsigned long, std::set<unsigned long>> termIdIndex;
 
-		for (const auto& file : fs::directory_iterator(dir)) {
+		for (const auto& file : fs::directory_iterator(entry)) {
 
 			std::string fileName = fs::path(file).filename().string();
 			unsigned long fileId;
@@ -118,11 +123,8 @@ void indexDirs(std::queue<std::string>& dirQueue, Dictionary& index, const std::
 			}
 		}
 
-		std::string outPath = outDir + fs::path(dir).filename().string();
+		std::string outPath = outDir + fs::path(entry).filename().string();
 		storeIndex(termIdIndex, outPath);
-
-		std::lock_guard<std::mutex> locker(queueMu);
-		dirQueue.push(outPath);
 	}
 }
 

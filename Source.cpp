@@ -11,10 +11,10 @@
 #include <mutex>
 #include <algorithm>
 
-std::mutex termMu, fileMu, queueMu, queueMu2;
+std::mutex termMu, fileMu, queueMu, queueMu2, coutMu;
 namespace fs = std::experimental::filesystem::v1;
 
-
+// holds dictionaries and counters used to index files
 struct Dictionary {
 	// maps terms to unque term id
 	std::unordered_map<std::string, unsigned long> termDict;
@@ -54,32 +54,33 @@ void writeDictionary(const std::unordered_map<std::string, unsigned long>& dict,
 
 int main() {
 
-	std::string inDir = "C:\\Users\\Brandon\\Documents\\Projects\\C++\\MultiThreadedIndexer\\pa1-data\\pa1-data";
+	std::string dir = "C:\\Users\\Brandon\\Documents\\Projects\\C++\\MultiThreadedIndexer\\pa1-data\\pa1-data";
 
-	std::queue<fs::directory_entry> dirEntryQueue;
+	std::queue<fs::directory_entry> dirQueue;
 
-	for (const auto& subDir : fs::directory_iterator(inDir)) {
-		dirEntryQueue.push(subDir);
+	for (const auto& subDir : fs::directory_iterator(dir)) {
+		dirQueue.push(subDir);
 	}
 	
-	short numThreads = std::thread::hardware_concurrency();
+	short numCores = std::thread::hardware_concurrency();
 
-	std::cout << "Numthreads: " << numThreads << '\n';
+	std::cout << "Numthreads: " << numCores << '\n';
 
 	std::vector<std::thread> threads;
-	threads.reserve(numThreads);
+	threads.reserve(numCores);
 
 	Dictionary dictionary;
 
 	std::string outDir = "C:\\Users\\Brandon\\Documents\\Projects\\C++\\MultiThreadedIndexer\\";
 
-	for (int i = 0; i < numThreads - 1; i++) {
+	for (int i = 0; i < numCores - 1; i++) {
 
-		threads.push_back(std::thread(&indexData, std::ref(dirEntryQueue), std::ref(dictionary), std::ref(outDir)));
+		threads.emplace_back(&indexData, std::ref(dirQueue), std::ref(dictionary), std::ref(outDir));
 
 	}
 
-	indexData(dirEntryQueue, dictionary, outDir);
+	// call once on main thread
+	indexData(dirQueue, dictionary, outDir);
 
 	
 	for (auto& thread : threads) {
@@ -118,7 +119,6 @@ void indexData(std::queue<fs::directory_entry>& dirQueue, Dictionary& dictionary
 			int options[2] = { dictionary.fileCounter, it.first->second };
 			fileId = options[option];
 			dictionary.fileCounter += option;
-
 
 			std::ifstream stream(file);
 			std::istream_iterator<std::string> start(stream), end;

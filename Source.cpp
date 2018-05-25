@@ -11,7 +11,7 @@
 #include <mutex>
 #include <algorithm>
 
-std::mutex termMu, linkMu, queueMu, queueMu2;
+std::mutex termMu, fileMu, queueMu, queueMu2;
 namespace fs = std::experimental::filesystem::v1;
 
 
@@ -23,18 +23,34 @@ struct Dictionary {
 	std::unordered_map<std::string, unsigned long> fileDict;
 
 	// uniquely identifies each file
-	unsigned long fileCounter = 0;
+	std::atomic<unsigned long> fileCounter = 0;
 
 	// uniquely identifies each term
-	unsigned long termCounter = 0;
+	std::atomic<unsigned long> termCounter = 0;
 };
 
-
+/*
+	Maps all words in all files in directories to the all files a word occurs in.
+	Param 1 - Directory entry that represents a directory.
+	Param 2 - Dictionary struct that holds dictionaries for files and terms
+	Param 3 - path to write the index to
+*/
 void indexData(std::queue<fs::directory_entry>&, Dictionary&, const std::string&);
 
-void storeIndex(const std::map<unsigned long, std::set<unsigned long>>&, const std::string&);
+/*
+	Writes index to file in binary.
+	Param 1 - map that represents an index
+	Param 2 - path of location to store index
+*/
+void writeIndex(const std::map<unsigned long, std::set<unsigned long>>&, const std::string&);
 
-void storeDictionary(const std::unordered_map<std::string, unsigned long>& dict, const std::string& path);
+
+/*
+	Writes dictionary to file in binary
+	Param - 1 map representing a dictionary
+	Param - 2 path that represents location to write to
+*/
+void writeDictionary(const std::unordered_map<std::string, unsigned long>& dict, const std::string& path);
 
 int main() {
 
@@ -47,6 +63,8 @@ int main() {
 	}
 	
 	short numThreads = std::thread::hardware_concurrency();
+
+	std::cout << "Numthreads: " << numThreads << '\n';
 
 	std::vector<std::thread> threads;
 	threads.reserve(numThreads);
@@ -72,7 +90,7 @@ int main() {
 }
 
 
-void indexData(std::queue<fs::directory_entry>& dirQueue, Dictionary& index, const std::string& outDir) {
+void indexData(std::queue<fs::directory_entry>& dirQueue, Dictionary& dictionary, const std::string& outDir) {
 
 	fs::directory_entry entry;
 
@@ -89,14 +107,18 @@ void indexData(std::queue<fs::directory_entry>& dirQueue, Dictionary& index, con
 		for (const auto& file : fs::directory_iterator(entry)) {
 
 			std::string fileName = fs::path(file).filename().string();
-			unsigned long fileId;
 
+			unsigned long fileId;
+			std::pair<std::unordered_map<std::string, unsigned long>::iterator, bool> it;
 			{
-				std::lock_guard<std::mutex> locker(linkMu);
-				auto it = index.fileDict.emplace(fileName, index.fileCounter);
-				index.fileCounter += it.second;
-				fileId = it.first->second;
+				std::lock_guard<std::mutex> lock(fileMu);
+				it = dictionary.fileDict.emplace(fileName, dictionary.fileCounter);
 			}
+			bool option = it.second;
+			int options[2] = { dictionary.fileCounter, it.first->second };
+			fileId = options[option];
+			dictionary.fileCounter += option;
+
 
 			std::ifstream stream(file);
 			std::istream_iterator<std::string> start(stream), end;
@@ -105,13 +127,16 @@ void indexData(std::queue<fs::directory_entry>& dirQueue, Dictionary& index, con
 			for (const auto& term : terms) {
 
 				unsigned long termId;
-
+				std::pair<std::unordered_map<std::string, unsigned long>::iterator, bool> it;
 				{
 					std::lock_guard<std::mutex> lock(termMu);
-					auto it = index.termDict.emplace(term, index.termCounter);
-					index.termCounter += it.second;
-					termId = it.first->second;
+					it = dictionary.termDict.emplace(term, dictionary.termCounter);
 				}
+				bool option = it.second;
+				int options[2] = { dictionary.termCounter, it.first->second };
+				termId = options[option];
+				dictionary.termCounter += option;
+				
 
 				auto newFileIdList = { fileId };
 				auto iter = termIdIndex.emplace(termId, newFileIdList);
@@ -124,11 +149,11 @@ void indexData(std::queue<fs::directory_entry>& dirQueue, Dictionary& index, con
 		}
 
 		std::string outPath = outDir + fs::path(entry).filename().string();
-		storeIndex(termIdIndex, outPath);
+		writeIndex(termIdIndex, outPath);
 	}
 }
 
-void storeIndex(const std::map<unsigned long, std::set<unsigned long>>& termIdIndex, const std::string& path ) {
+void writeIndex(const std::map<unsigned long, std::set<unsigned long>>& termIdIndex, const std::string& path ) {
 
 	std::ofstream stream(path, std::ios::binary);
 
@@ -148,10 +173,7 @@ void storeIndex(const std::map<unsigned long, std::set<unsigned long>>& termIdIn
 			}
 		}
 	}
-}
-
-void storeDictionary(const std::unordered_map<std::string, unsigned long>& dict, const std::string& path) {
-
-	
 
 }
+
+void writeDictionary(const std::unordered_map<std::string, unsigned long>& dict, const std::string& path) { }
